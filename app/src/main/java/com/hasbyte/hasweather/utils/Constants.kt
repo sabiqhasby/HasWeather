@@ -4,10 +4,11 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
+import com.hasbyte.hasweather.BuildConfig
 
 object Constants {
     const val BASE_URL = "https://api.openweathermap.org/data/2.5/"
-    const val API_KEY = "e780044175929f338a4c017c422405fd"
+    const val API_KEY = BuildConfig.WEATHER_API_KEY
     const val METRIC_UNIT = "metric"
     fun isNetworkAvailable(context: Context): Boolean {
         // Get an instance of ConnectivityManager using context parameter
