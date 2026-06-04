@@ -2,7 +2,7 @@ package com.hasbyte.hasweather.data
 
 data class WeatherResponse(
     val coordinate: Coord,
-    val weather: MutableList<Wheater>,
+    val weather: MutableList<Weather>,
     val base: String,
     val main: Main,
     val visibility: Int,
@@ -21,7 +21,7 @@ data class Coord(
     val lat: Double
 )
 
-data class Wheater(
+data class Weather(
     val id: Int,
     val main: String,
     val description: String,

@@ -12,31 +12,51 @@ import android.os.Bundle
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+import com.facebook.shimmer.ShimmerFrameLayout
 import com.google.android.gms.location.*
 import com.hasbyte.hasweather.data.WeatherResponse
 import com.hasbyte.hasweather.data.WeatherServiceAPI
+import com.hasbyte.hasweather.databinding.ActivityMainBinding
 import com.hasbyte.hasweather.utils.Constants
-import okhttp3.Callback
+import com.hasbyte.hasweather.utils.convertTime
 import retrofit2.Call
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+import java.util.Date
 
 class MainActivity : AppCompatActivity() {
+    private lateinit var binding: ActivityMainBinding
+    private lateinit var swipeRefreshLayout: SwipeRefreshLayout
+    private lateinit var shimmerContainer: ShimmerFrameLayout
     private lateinit var mFusedLocationClient: FusedLocationProviderClient
     private val REQUEST_LOCATION_CODE = 123
     private var isDialogSettingShowing = false
 
+    private var latitude = 0.0
+    private var longitude = 0.0
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
 
         mFusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
+        shimmerContainer = binding.shimmerViewContainer
+        swipeRefreshLayout = binding.main
 
+        swipeRefreshLayout.setOnRefreshListener {
+            getLocationWeatherDetails()
+        }
     }
 
     override fun onResume() {
@@ -113,13 +133,15 @@ class MainActivity : AppCompatActivity() {
             override fun onLocationResult(locationResult: LocationResult) {
                 val location = locationResult.lastLocation
                 if (location != null) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "latitude: ${location.latitude} longitude: ${location.longitude}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+//                    Toast.makeText(
+//                        this@MainActivity,
+//                        "latitude: ${location.latitude} longitude: ${location.longitude}",
+//                        Toast.LENGTH_SHORT
+//                    ).show()
                     //passing latitude and longitude
-                    getLocationWeatherDetails(location.latitude, location.longitude)
+                    latitude = location.latitude
+                    longitude = location.longitude
+                    getLocationWeatherDetails()
                     mFusedLocationClient.removeLocationUpdates(this)
                 }
 
@@ -133,7 +155,12 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    private fun getLocationWeatherDetails(lat: Double, lon: Double) {
+    private fun getLocationWeatherDetails(lat: Double = latitude, lon: Double = longitude) {
+//        binding.progressBar.visibility = View.VISIBLE
+        shimmerContainer.startShimmer()
+        shimmerContainer.visibility = View.VISIBLE
+        binding.mainContainer.visibility = View.GONE
+
         if (Constants.isNetworkAvailable(this)) {
             val retrofit = Retrofit.Builder()
                 .baseUrl(Constants.BASE_URL)
@@ -145,21 +172,56 @@ class MainActivity : AppCompatActivity() {
                 lat, lon, Constants.API_KEY,
                 Constants.METRIC_UNIT
             )
-            call.enqueue(object: retrofit2.Callback<WeatherResponse> {
+            call.enqueue(object : retrofit2.Callback<WeatherResponse> {
+                @SuppressLint("SetTextI18n")
                 override fun onResponse(
                     call: Call<WeatherResponse?>,
                     response: Response<WeatherResponse?>
                 ) {
-                    if(response.isSuccessful){
+                    swipeRefreshLayout.isRefreshing = false
+                    shimmerContainer.stopShimmer()
+                    shimmerContainer.visibility = View.GONE
+
+                    if (response.isSuccessful) {
                         val weather = response.body()
 
+//                        binding.progressBar.visibility = View.GONE
+                        binding.mainContainer.visibility = View.VISIBLE
+                        binding.tvError.visibility = View.GONE
 
-                        Toast.makeText(this@MainActivity, "$weather", Toast.LENGTH_SHORT).show()
+
+
+//                        Toast.makeText(this@MainActivity, "$weather", Toast.LENGTH_SHORT).show()
+                        weather?.let { weatherData ->
+                            // Mengambil deskripsi cuaca utama
+                            weatherData.weather.firstOrNull()?.let { firstWeather ->
+                                binding.tvStatus.text = firstWeather.description
+                            }
+
+                            binding.tvSunrise.text = convertTime(weatherData.sys.sunrise.toLong())
+                            binding.tvSunset.text = convertTime(weatherData.sys.sunset.toLong())
+                            binding.tvAddress.text = weatherData.name
+                            binding.tvTempMax.text = "Max Temp: ${weatherData.main.temp_max}"
+                            binding.tvTempMin.text = "Min Temp: ${weatherData.main.temp_min}"
+                            binding.tvMainTemp.text = weatherData.main.temp.toString()
+                            binding.tvHumidity.text = weatherData.main.humidity.toString()
+                            binding.tvPressure.text = weatherData.main.pressure.toString()
+                            binding.tvWind.text = weatherData.wind.speed.toString()
+                            binding.tvDate.text =
+                                LocalDateTime.now().format(DateTimeFormatter.ofPattern("dd MMMM yyyy HH:mm"))
+                        }
 
 //                        Log.d("WEATHER RESPONSE", weather.toString())
 
                     } else {
-                        Toast.makeText(this@MainActivity, "Something went wrong ${response.code().toString()}", Toast.LENGTH_SHORT).show()
+                        binding.mainContainer.visibility = View.GONE
+                        binding.tvError.visibility = View.VISIBLE
+                        binding.tvError.text = "Gagal memuat data: ${response.code()}"
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Something went wrong ${response.code().toString()}",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
 
@@ -167,7 +229,14 @@ class MainActivity : AppCompatActivity() {
                     call: Call<WeatherResponse?>,
                     t: Throwable
                 ) {
-                    Toast.makeText(this@MainActivity, "Error ${t.toString()}", Toast.LENGTH_SHORT).show()
+                    shimmerContainer.stopShimmer() // Tambahkan ini
+                    shimmerContainer.visibility = View.GONE
+                    swipeRefreshLayout.isRefreshing = false
+
+                    // Tampilkan pesan error
+                    binding.mainContainer.visibility = View.GONE
+                    binding.tvError.visibility = View.VISIBLE
+                    binding.tvError.text = "Terjadi kesalahan koneksi"
                 }
 
             })
